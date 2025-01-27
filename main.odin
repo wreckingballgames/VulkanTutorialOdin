@@ -19,6 +19,10 @@ validation_layers: []cstring = {
     "VK_LAYER_KHRONOS_validation",
 }
 
+Queue_Family_Indices :: struct {
+    graphics_family: Maybe(u32),
+}
+
 main :: proc() {
     // Tracking allocator code adapted from Karl Zylinski's tutorials.
     track: mem.Tracking_Allocator
@@ -203,5 +207,32 @@ pick_physical_device :: proc() -> vk.PhysicalDevice {
 
 // TODO: Implement scoring system to select most suitable GPU
 is_physical_device_suitable :: proc(device: vk.PhysicalDevice) -> b32 {
-    return true
+    indices := find_queue_families(device)
+
+    return indices.graphics_family != nil
+}
+
+find_queue_families :: proc(device: vk.PhysicalDevice) -> Queue_Family_Indices {
+    indices: Queue_Family_Indices
+
+    queue_family_count: u32
+    vk.GetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, nil)
+
+    queue_families := make([]vk.QueueFamilyProperties, queue_family_count)
+    defer delete(queue_families)
+    vk.GetPhysicalDeviceQueueFamilyProperties(device, &queue_family_count, raw_data(queue_families[:]))
+
+    i: u32
+    for queue_family in queue_families {
+        if vk.QueueFlag.GRAPHICS in queue_family.queueFlags {
+            indices.graphics_family = i
+        }
+        if indices.graphics_family != nil {
+            break
+        }
+
+        i += 1
+    }
+
+    return indices
 }
