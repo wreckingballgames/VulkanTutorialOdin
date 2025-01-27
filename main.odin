@@ -14,6 +14,9 @@ WINDOW_TITLE :: "Vulkan Tutorial"
 
 window: glfw.WindowHandle
 vk_instance: vk.Instance
+validation_layers: []cstring = {
+    "VK_LAYER_KHRONOS_validation",
+}
 
 main :: proc() {
     // Tracking allocator code adapted from Karl Zylinski's tutorials.
@@ -31,6 +34,8 @@ main :: proc() {
         mem.tracking_allocator_destroy(&track)
     }
 
+    defer cleanup()
+
     window = init_window()
     init_vulkan()
     // TODO: Integrate error handling into init_vulkan
@@ -39,7 +44,6 @@ main :: proc() {
         return
     }
     main_loop()
-    cleanup()
 }
 
 init_window :: proc() -> glfw.WindowHandle {
@@ -71,6 +75,10 @@ cleanup :: proc() {
 }
 
 create_vk_instance :: proc() -> vk.Instance {
+    if ENABLE_VALIDATION_LAYERS && !check_validation_layer_support() {
+        return nil
+    }
+
     instance: vk.Instance
 
     app_info: vk.ApplicationInfo
@@ -89,7 +97,12 @@ create_vk_instance :: proc() -> vk.Instance {
 
     create_info.enabledExtensionCount = u32(len(glfw_extensions))
     create_info.ppEnabledExtensionNames = raw_data(glfw_extensions[:])
-    create_info.enabledLayerCount = 0
+    if ENABLE_VALIDATION_LAYERS {
+        create_info.enabledLayerCount = u32(len(validation_layers))
+        create_info.ppEnabledLayerNames = raw_data(validation_layers[:])
+    } else {
+        create_info.enabledLayerCount = 0
+    }
 
     extension_count: u32
     vk.EnumerateInstanceExtensionProperties(nil, &extension_count, nil)
@@ -123,5 +136,29 @@ are_all_instance_extensions_supported :: proc(extensions: []cstring, enumerated_
             return false
         }
     }
+    return true
+}
+
+check_validation_layer_support :: proc() -> bool {
+    layer_count: u32
+    vk.EnumerateInstanceLayerProperties(&layer_count, nil)
+
+    available_layers := make([]vk.LayerProperties, layer_count)
+    vk.EnumerateInstanceLayerProperties(&layer_count, raw_data(available_layers[:]))
+
+    for layer_name in validation_layers {
+        is_layer_found: bool
+        for &layer_properties in available_layers {
+            if layer_name == cstring(raw_data(layer_properties.layerName[:])) {
+                is_layer_found = true
+                break
+            }
+        }
+
+        if !is_layer_found {
+            return false
+        }
+    }
+
     return true
 }
