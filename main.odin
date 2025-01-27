@@ -14,6 +14,7 @@ WINDOW_TITLE :: "Vulkan Tutorial"
 
 window: glfw.WindowHandle
 vk_instance: vk.Instance
+vk_surface: vk.SurfaceKHR
 vk_physical_device: vk.PhysicalDevice // Implicitly cleaned up when instance is destroyed
 vk_device: vk.Device
 device_features: vk.PhysicalDeviceFeatures
@@ -69,13 +70,20 @@ init_vulkan :: proc() {
     }
     vk.load_proc_addresses_instance(vk_instance)
 
+    surface := create_window_surface(vk_instance, window)
+    if surface == nil {
+        panic("Vulkan window surface could not be created!")
+    } else {
+        vk_surface = surface.(vk.SurfaceKHR)
+    }
+
     setup_debug_messenger()
-    vk_physical_device = pick_physical_device()
+    vk_physical_device = pick_physical_device(vk_instance)
     if vk_physical_device == nil {
         panic("Vulkan physical device handle could not be created!")
     }
 
-    vk_device = create_logical_device()
+    vk_device = create_logical_device(vk_physical_device)
     if vk_device == nil {
         panic("Vulkan logical device could not be created!")
     }
@@ -90,6 +98,7 @@ main_loop :: proc() {
 
 cleanup :: proc() {
     vk.DestroyDevice(vk_device, nil)
+    vk.DestroySurfaceKHR(vk_instance, vk_surface, nil)
     vk.DestroyInstance(vk_instance, nil)
     glfw.DestroyWindow(window)
     glfw.Terminate()
@@ -146,6 +155,15 @@ create_vk_instance :: proc(allocator := context.allocator) -> vk.Instance {
     }
 }
 
+create_window_surface :: proc(instance: vk.Instance, window: glfw.WindowHandle) -> Maybe(vk.SurfaceKHR) {
+    surface: vk.SurfaceKHR = ---
+    if glfw.CreateWindowSurface(instance, window, nil, &surface) != .SUCCESS {
+        return nil
+    } else {
+        return surface
+    }
+}
+
 are_all_instance_extensions_supported :: proc(extensions: []cstring, enumerated_extensions: []vk.ExtensionProperties) -> bool {
     for extension in extensions {
         is_extension_in_enumerated_extensions: bool
@@ -191,9 +209,9 @@ setup_debug_messenger :: proc() {
 
 }
 
-pick_physical_device :: proc(allocator := context.allocator) -> vk.PhysicalDevice {
+pick_physical_device :: proc(instance: vk.Instance, allocator := context.allocator) -> vk.PhysicalDevice {
     device_count: u32
-    vk.EnumeratePhysicalDevices(vk_instance, &device_count, nil)
+    vk.EnumeratePhysicalDevices(instance, &device_count, nil)
 
     if device_count == 0 {
         return nil
@@ -203,7 +221,7 @@ pick_physical_device :: proc(allocator := context.allocator) -> vk.PhysicalDevic
 
     devices := make([]vk.PhysicalDevice, device_count, allocator)
     defer delete(devices)
-    vk.EnumeratePhysicalDevices(vk_instance, &device_count, raw_data(devices[:]))
+    vk.EnumeratePhysicalDevices(instance, &device_count, raw_data(devices[:]))
 
     // Pick the first suitable device we find.
     for device in devices {
@@ -247,9 +265,9 @@ find_queue_families :: proc(device: vk.PhysicalDevice, allocator := context.allo
     return indices
 }
 
-create_logical_device :: proc() -> vk.Device {
+create_logical_device :: proc(physical_device: vk.PhysicalDevice) -> vk.Device {
     device: vk.Device
-    indices := find_queue_families(vk_physical_device)
+    indices := find_queue_families(physical_device)
 
     queue_create_info: vk.DeviceQueueCreateInfo = ---
     queue_create_info.sType = .DEVICE_QUEUE_CREATE_INFO
@@ -274,7 +292,7 @@ create_logical_device :: proc() -> vk.Device {
         create_info.enabledLayerCount = 0
     }
 
-    if vk.CreateDevice(vk_physical_device, &create_info, nil, &device) != .SUCCESS {
+    if vk.CreateDevice(physical_device, &create_info, nil, &device) != .SUCCESS {
         return nil
     } else {
         // I think this procedure call is in the right place...
