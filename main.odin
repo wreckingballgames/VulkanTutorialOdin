@@ -25,6 +25,11 @@ validation_layers: []cstring = {
 
 Queue_Family_Indices :: struct {
     graphics_family: Maybe(u32),
+    present_family: Maybe(u32),
+}
+
+are_queue_family_indices_complete :: proc(indices: Queue_Family_Indices) -> b32 {
+    return indices.graphics_family != nil && indices.present_family != nil
 }
 
 main :: proc() {
@@ -78,12 +83,12 @@ init_vulkan :: proc() {
     }
 
     setup_debug_messenger()
-    vk_physical_device = pick_physical_device(vk_instance)
+    vk_physical_device = pick_physical_device(vk_instance, vk_surface)
     if vk_physical_device == nil {
         panic("Vulkan physical device handle could not be created!")
     }
 
-    vk_device = create_logical_device(vk_physical_device)
+    vk_device = create_logical_device(vk_physical_device, vk_surface)
     if vk_device == nil {
         panic("Vulkan logical device could not be created!")
     }
@@ -164,9 +169,9 @@ create_window_surface :: proc(instance: vk.Instance, window: glfw.WindowHandle) 
     }
 }
 
-are_all_instance_extensions_supported :: proc(extensions: []cstring, enumerated_extensions: []vk.ExtensionProperties) -> bool {
+are_all_instance_extensions_supported :: proc(extensions: []cstring, enumerated_extensions: []vk.ExtensionProperties) -> b32 {
     for extension in extensions {
-        is_extension_in_enumerated_extensions: bool
+        is_extension_in_enumerated_extensions: b32
         for &enum_extension in enumerated_extensions {
             if extension == cstring(raw_data(enum_extension.extensionName[:])) {
                 is_extension_in_enumerated_extensions = true
@@ -179,7 +184,7 @@ are_all_instance_extensions_supported :: proc(extensions: []cstring, enumerated_
     return true
 }
 
-check_validation_layer_support :: proc(allocator := context.allocator) -> bool {
+check_validation_layer_support :: proc(allocator := context.allocator) -> b32 {
     layer_count: u32
     vk.EnumerateInstanceLayerProperties(&layer_count, nil)
 
@@ -209,7 +214,7 @@ setup_debug_messenger :: proc() {
 
 }
 
-pick_physical_device :: proc(instance: vk.Instance, allocator := context.allocator) -> vk.PhysicalDevice {
+pick_physical_device :: proc(instance: vk.Instance, surface: vk.SurfaceKHR, allocator := context.allocator) -> vk.PhysicalDevice {
     device_count: u32
     vk.EnumeratePhysicalDevices(instance, &device_count, nil)
 
@@ -225,7 +230,7 @@ pick_physical_device :: proc(instance: vk.Instance, allocator := context.allocat
 
     // Pick the first suitable device we find.
     for device in devices {
-        if is_physical_device_suitable(device) {
+        if is_physical_device_suitable(device, surface) {
             physical_device = device
         }
     }
@@ -234,13 +239,13 @@ pick_physical_device :: proc(instance: vk.Instance, allocator := context.allocat
 }
 
 // TODO: Implement scoring system to select most suitable GPU
-is_physical_device_suitable :: proc(device: vk.PhysicalDevice) -> b32 {
-    indices := find_queue_families(device)
+is_physical_device_suitable :: proc(device: vk.PhysicalDevice, surface: vk.SurfaceKHR) -> b32 {
+    indices := find_queue_families(device, surface)
 
-    return indices.graphics_family != nil
+    return are_queue_family_indices_complete(indices)
 }
 
-find_queue_families :: proc(device: vk.PhysicalDevice, allocator := context.allocator) -> Queue_Family_Indices {
+find_queue_families :: proc(device: vk.PhysicalDevice, surface: vk.SurfaceKHR, allocator := context.allocator) -> Queue_Family_Indices {
     indices: Queue_Family_Indices
 
     queue_family_count: u32
@@ -262,12 +267,19 @@ find_queue_families :: proc(device: vk.PhysicalDevice, allocator := context.allo
         i += 1
     }
 
+    present_support: b32
+    vk.GetPhysicalDeviceSurfaceSupportKHR(device, i, surface, &present_support)
+
+    if present_support {
+        indices.present_family = i
+    }
+
     return indices
 }
 
-create_logical_device :: proc(physical_device: vk.PhysicalDevice) -> vk.Device {
+create_logical_device :: proc(physical_device: vk.PhysicalDevice, surface: vk.SurfaceKHR) -> vk.Device {
     device: vk.Device
-    indices := find_queue_families(physical_device)
+    indices := find_queue_families(physical_device, surface)
 
     queue_create_info: vk.DeviceQueueCreateInfo = ---
     queue_create_info.sType = .DEVICE_QUEUE_CREATE_INFO
