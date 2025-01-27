@@ -99,9 +99,10 @@ create_vk_instance :: proc() -> vk.Instance {
     for extension in extensions {
         fmt.printfln("\t%v", extension.extensionName)
     }
-
-    // Confirm that all GLFW required extensions are supported.
-    fmt.printfln("Are all GLFW required instance extensions supported? %v", are_all_instance_extensions_supported(glfw_extensions, extensions))
+    when ODIN_DEBUG {
+        // Confirm that all GLFW required extensions are supported.
+        fmt.printfln("Are all GLFW required instance extensions supported? %v", are_all_instance_extensions_supported(glfw_extensions, extensions))
+    }
 
     if vk.CreateInstance(&create_info, nil, &instance) != .SUCCESS {
         return nil
