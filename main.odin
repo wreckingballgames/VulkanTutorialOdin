@@ -59,7 +59,9 @@ init_window :: proc() -> glfw.WindowHandle {
 
 init_vulkan :: proc() {
     vk.load_proc_addresses_global(rawptr(glfw.GetInstanceProcAddress))
+
     vk_instance = create_vk_instance()
+    vk.load_proc_addresses_instance(vk_instance)
 }
 
 main_loop :: proc() {
@@ -107,6 +109,7 @@ create_vk_instance :: proc() -> vk.Instance {
     extension_count: u32
     vk.EnumerateInstanceExtensionProperties(nil, &extension_count, nil)
     extensions := make([]vk.ExtensionProperties, extension_count)
+    defer delete(extensions)
     vk.EnumerateInstanceExtensionProperties(nil, &extension_count, raw_data(extensions))
     fmt.println("Available extensions:")
     for extension in extensions {
@@ -144,6 +147,7 @@ check_validation_layer_support :: proc() -> bool {
     vk.EnumerateInstanceLayerProperties(&layer_count, nil)
 
     available_layers := make([]vk.LayerProperties, layer_count)
+    defer delete(available_layers)
     vk.EnumerateInstanceLayerProperties(&layer_count, raw_data(available_layers[:]))
 
     for layer_name in validation_layers {
