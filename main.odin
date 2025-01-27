@@ -14,6 +14,7 @@ WINDOW_TITLE :: "Vulkan Tutorial"
 
 window: glfw.WindowHandle
 vk_instance: vk.Instance
+vk_physical_device: vk.PhysicalDevice
 validation_layers: []cstring = {
     "VK_LAYER_KHRONOS_validation",
 }
@@ -38,11 +39,6 @@ main :: proc() {
 
     window = init_window()
     init_vulkan()
-    // TODO: Integrate error handling into init_vulkan
-    if vk_instance == nil {
-        fmt.println("Could not create vk_instance!")
-        return
-    }
     main_loop()
 }
 
@@ -61,7 +57,16 @@ init_vulkan :: proc() {
     vk.load_proc_addresses_global(rawptr(glfw.GetInstanceProcAddress))
 
     vk_instance = create_vk_instance()
+    if vk_instance == nil {
+        panic("Vulkan instance could not be created!")
+    }
     vk.load_proc_addresses_instance(vk_instance)
+
+    setup_debug_messenger()
+    vk_physical_device = pick_physical_device()
+    if vk_physical_device == nil {
+        panic("Vulkan physical device handle could not be created!")
+    }
 }
 
 main_loop :: proc() {
@@ -164,5 +169,39 @@ check_validation_layer_support :: proc() -> bool {
         }
     }
 
+    return true
+}
+
+// TODO
+setup_debug_messenger :: proc() {
+
+}
+
+pick_physical_device :: proc() -> vk.PhysicalDevice {
+    device_count: u32
+    vk.EnumeratePhysicalDevices(vk_instance, &device_count, nil)
+
+    if device_count == 0 {
+        return nil
+    }
+
+    physical_device: vk.PhysicalDevice
+
+    devices := make([]vk.PhysicalDevice, device_count)
+    defer delete(devices)
+    vk.EnumeratePhysicalDevices(vk_instance, &device_count, raw_data(devices[:]))
+
+    // Pick the first suitable device we find.
+    for device in devices {
+        if is_physical_device_suitable(device) {
+            physical_device = device
+        }
+    }
+
+    return physical_device
+}
+
+// TODO: Implement scoring system to select most suitable GPU
+is_physical_device_suitable :: proc(device: vk.PhysicalDevice) -> b32 {
     return true
 }
