@@ -19,6 +19,7 @@ vk_physical_device: vk.PhysicalDevice // Implicitly cleaned up when instance is 
 vk_device: vk.Device
 device_features: vk.PhysicalDeviceFeatures
 graphics_queue: vk.Queue // Implicitly cleaned up when device is destroyed
+present_queue: vk.Queue // Implicitly cleaned up when device is destroyed
 validation_layers: []cstring = {
     "VK_LAYER_KHRONOS_validation",
 }
@@ -88,7 +89,7 @@ init_vulkan :: proc() {
         panic("Vulkan physical device handle could not be created!")
     }
 
-    vk_device = create_logical_device(vk_physical_device, vk_surface)
+    vk_device = create_logical_device(vk_physical_device, vk_surface, &graphics_queue, &present_queue)
     if vk_device == nil {
         panic("Vulkan logical device could not be created!")
     }
@@ -144,11 +145,11 @@ create_vk_instance :: proc(allocator := context.allocator) -> vk.Instance {
     extensions := make([]vk.ExtensionProperties, extension_count, allocator)
     defer delete(extensions)
     vk.EnumerateInstanceExtensionProperties(nil, &extension_count, raw_data(extensions[:]))
-    fmt.println("Available extensions:")
-    for extension in extensions {
-        fmt.printfln("\t%v", extension.extensionName)
-    }
     when ODIN_DEBUG {
+        fmt.println("Available extensions:")
+        for extension in extensions {
+            fmt.printfln("\t%v", extension.extensionName)
+        }
         // Confirm that all GLFW required extensions are supported.
         fmt.printfln("Are all GLFW required instance extensions supported? %v", are_all_instance_extensions_supported(glfw_extensions, extensions))
     }
@@ -277,22 +278,23 @@ find_queue_families :: proc(device: vk.PhysicalDevice, surface: vk.SurfaceKHR, a
     return indices
 }
 
-create_logical_device :: proc(physical_device: vk.PhysicalDevice, surface: vk.SurfaceKHR) -> vk.Device {
+create_logical_device :: proc(physical_device: vk.PhysicalDevice, surface: vk.SurfaceKHR, graphics_queue, present_queue: ^vk.Queue) -> vk.Device {
     device: vk.Device
     indices := find_queue_families(physical_device, surface)
 
+    queue_priority: f32 = 1.0
+
+    // TODO: Figure out how to make closer to tutorial (case of separate drawing and presenting devices)
     queue_create_info: vk.DeviceQueueCreateInfo = ---
     queue_create_info.sType = .DEVICE_QUEUE_CREATE_INFO
     queue_create_info.queueFamilyIndex = indices.graphics_family.(u32)
     queue_create_info.queueCount = 1
-
-    queue_priority: f32 = 1.0
     queue_create_info.pQueuePriorities = &queue_priority
 
     create_info: vk.DeviceCreateInfo = ---
     create_info.sType = .DEVICE_CREATE_INFO
-    create_info.pQueueCreateInfos = &queue_create_info
     create_info.queueCreateInfoCount = 1
+    create_info.pQueueCreateInfos = &queue_create_info
 
     create_info.pEnabledFeatures = &device_features
     create_info.enabledExtensionCount = 0
@@ -307,8 +309,9 @@ create_logical_device :: proc(physical_device: vk.PhysicalDevice, surface: vk.Su
     if vk.CreateDevice(physical_device, &create_info, nil, &device) != .SUCCESS {
         return nil
     } else {
-        // I think this procedure call is in the right place...
-        vk.GetDeviceQueue(device, indices.graphics_family.(u32), 0, &graphics_queue)
+        // I think these procedure calls are in the right place...
+        vk.GetDeviceQueue(device, indices.graphics_family.(u32), 0, graphics_queue)
+        vk.GetDeviceQueue(device, indices.present_family.(u32), 0, present_queue)
         return device
     }
 }
